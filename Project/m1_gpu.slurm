@@ -18,7 +18,10 @@ module load cuda
 
 echo -e "job $SLURM_JOBID is starting on `hostname`\n\n"
 
-srun ./m1_gpu 100 > m1_gpu.out
-
+# srun ./m1_gpu 10000 > m1_gpu.out
+# { time srun ./m1_gpu 10000 > m1_gpu.out; } 2> time.out
+# srun nsys profile --stats=true ./m1_gpu > profile.out
+srun ncu -f --set full -o analysis_file ./m1_gpu 10000 > ncu.out
+# srun compute-sanitizer ./m1_gpu 100
 # Generate nsys profile information, output will be in profile.out
 # srun nsys profile --stats=true ./m1_gpu > profile.out

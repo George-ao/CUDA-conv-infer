@@ -55,11 +55,11 @@ __global__ void conv_forward_kernel(float *output, const float *input, const flo
     float p_val = 0.0f;
     if (out_w < Width_out && out_h < Height_out)
     {
-        for (int mask_w=0; mask_w < K; mask_w++)
+        for (int in_map_idx=0; in_map_idx < Channel; in_map_idx++)
         {
             for (int mask_h=0; mask_h < K; mask_h++)
             {
-                for (int in_map_idx=0; in_map_idx < Channel; in_map_idx++)
+                for (int mask_w=0; mask_w < K; mask_w++)
                 {
                     int in_w = out_w + mask_w;
                     int in_h = out_h + mask_h;

@@ -38,7 +38,7 @@ So please always do `git pull` to update the project instructions.
 | Milestone                   | Due                    | Score |
 | --------------------------- | ---------------------- | ----- |
 | [Milestone 1](README_m1.md) | October 11th, 2024 8PM | 20%   |
-| Milestone 2                 | November 8th, 2024 8PM | 20%   |
+| [Milestone 2](README_m2.md) | November 8th, 2024 8PM | 20%   |
 | Milestone 3                 | December 6th, 2024 8PM | 60%   |
 
 

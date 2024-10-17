@@ -3,7 +3,7 @@
 clean() {
     echo "Cleaning up..."
     ./cleanfile.sh
-    rm -rf ./m1_cpu ./m1_gpu ./m3 ./final *.out *.err outfile
+    rm -rf ./m1_cpu ./m1_gpu ./m2 ./m3 ./final *.out *.err outfile
 }
 
 build() {

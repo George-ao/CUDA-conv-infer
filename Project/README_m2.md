@@ -51,7 +51,7 @@ The convolution forward process consists of the following steps:
 
 The matrix multiplication kernel and the permute kernel are provided. You will focus on implementing the input matrix unrolling kernel.
 
-In lecture 12, we covered how to unroll the input features for a single image. To unroll a batch of images, the unrolled features for each image in the batch should be concatenated. In other words, the shape of the unrolled matrix will be `Batch` x `Height_unrolled` x `Width_unrolled`.
+In lecture 12, we covered how to unroll the input features for a single image. To unroll a batch of images, the unrolled matrix for each image in the batch should be concatenated along the row dimension. In other words, if the unrolled matrix of a single image has a shape of `H` x `W`, then the unrolled matrix of a batch of images will have a shape of `H` x `(Batch * W)`.
 
 In your template, the host code is separated into 3 parts. `conv_forward_gpu_prolog` allocates memory and copies data from host to device (Note: the device pointers given to you in this function are double pointers). `conv_forward_gpu` invokes input unrolling and matrix multiplication kernel. `conv_forward_gpu_epilog` copies output back to host and frees the device memory.
 

@@ -69,7 +69,7 @@ runs the code specified in `./project/src/layer/custom/matmul_unroll.cu` program
 
 If your implementation is correct, it will show the same accuracy as Milestone 1.
 
-The sum of OP times on batch_size=10000 should be approximately 200 ms. You must have correct accuracies and total OP time less than 600 ms to earn full credits on the coding part.
+The sum of OP times on batch_size=10000 should be approximately 200 ms. You must have correct accuracies and total OP time less than 1200 ms to earn full credits on the coding part.
 
 **To speed up testing, replace `#SBATCH --constraint="projects,perf,nvperf"` with `#SBATCH --constraint="projects"` when testing your code.**
 

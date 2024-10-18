@@ -43,11 +43,11 @@ void conv_forward_cpu(float *output, const float *input, const float *mask, cons
         {
           out_4d(img_idx, out_map_idx, out_h, out_w) = 0;
           // multiply mask with input
-          for (int mask_w=0; mask_w < K; mask_w++)
+          for (int in_map_idx=0; in_map_idx < Channel; in_map_idx++)
           {
             for (int mask_h=0; mask_h < K; mask_h++)
             {
-              for (int in_map_idx=0; in_map_idx < Channel; in_map_idx++)
+              for (int mask_w=0; mask_w < K; mask_w++)
               {
                 int in_w = out_w + mask_w;
                 int in_h = out_h + mask_h;

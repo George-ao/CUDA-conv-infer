@@ -3,6 +3,8 @@
 
 ***Deadline: November 8th, 2024 8PM***
 
+Please check [this](https://campuswire.com/c/GF7DDC41F/feed/653) Campuswire post regularly for project FAQ and updates.
+
 For each milestone, you will also need to complete a report on Canvas. The table below contains all of the deliverables.
 
 | Deliverables                                                             |

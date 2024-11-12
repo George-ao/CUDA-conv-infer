@@ -250,9 +250,6 @@ Make sure you implement three required optimizations and additional optimization
 
 ## Rubric
 
-The overall project score will be computed as follows. We will release rubric details of later milestones based on the class schedule.
-So please always do `git pull` to update the project instructions.
-
 1. Milestone 1 ( 20% )
    - Correctness ( 10% )
    - Report ( 10% )

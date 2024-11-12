@@ -5,7 +5,7 @@
 *.cubin
 *.fatbin
 libwb/
-m1_cpu
-m1_gpu
-m3
-final
+/m1_cpu
+/m1_gpu
+/m3
+/final

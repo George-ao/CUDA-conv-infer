@@ -16,8 +16,8 @@ Please check [this](https://campuswire.com/c/GF7DDC41F/feed/653) CampusWire post
   - [Performance Analysis using Nsight-Systems and Nsight-Compute](#performance-analysis-using-nsight-systems-and-nsight-compute)
   - [Documentation on running your code](#documentation-on-running-your-code)
 - [Submission Guidelines](#submission-guidelines)
-  - [Final Code Submission Guideline through Github](#final-code-submission-guideline-through-github)
-  - [Individual Optimization Submission Guideline through Google Drive](#individual-optimization-submission-guideline-through-google-drive)
+  - [Code Submission Guideline through Github](#code-submission-guideline-through-github)
+  - [Profiling Results Submission Guideline through Google Drive](#profiling-results-submission-guideline-through-google-drive)
   - [Milestone 3 Report Submission Guidelines through Canvas](#milestone-3-report-submission-guidelines-through-canvas)
 - [Optimizations](#optimizations)
   - [Hints and Links for Implementing the Optimizations](#hints-and-links-for-implementing-the-optimizations)
@@ -77,8 +77,8 @@ Checking your output:
 
 For **Project Milestone 3**, you will need to submit your work across three platforms:
 
-1. **GitHub**: Upload your final code for the performance test.
-2. **Google Drive**: Submit the code, output, and profiling results for each individual optimization.
+1. **GitHub**: Upload your final code for the performance test, and the code for individual optimizations.
+2. **Google Drive**: Submit the output and profiling results for each individual optimization.
 3. **Canvas**: Upload the project report.
 
 ### Code Submission Guideline through Github
@@ -95,7 +95,7 @@ For **Project Milestone 3**, you will need to submit your work across three plat
     - feel free to add more folders if needed.
   - **You must have a folder for each optimization individually** even if you stacked all of them for your final submission.
 - Push your code to GitHub!
-  - Only add your changes from `/project/src/layer/custom/m3-forward.cu`
+  - Only add your changes in `/project/src/layer/custom/m3-forward.cu` and `/project/m3`
 - **We strongly recommend that you periodically make commits**, local or not, to ensure that you have a record of your work saved. You can always just soft reset to merge your commits. It also provides proof in case something goes wrong with submissions.
 
 ``` 
@@ -119,7 +119,7 @@ For **Project Milestone 3**, you will need to submit your work across three plat
 - Look under `m3` and find the optimization folders.
 - **Each** optimization you implemented should have each own folder with the following requirements:
   - name of the folder should have the following format:`req_#` or `op_#`. (see the optimization numbers in [optimizations](#optimizations))
-  - it should contain all profiling results (your outputted binary analysis files) that you included in your final report.
+  - it should contain the execution output and all profiling results (your outputted binary analysis files) that you included in your final report.
   - feel free to add more folders if needed.
 - **You must have a folder for each optimization individually** even if you stacked all of them for your final submission.
 - Include the Google Drive link to the `m3` folder on the first page of your PDF report, and provide a link to the relevant subfolder in the section for each optimization.

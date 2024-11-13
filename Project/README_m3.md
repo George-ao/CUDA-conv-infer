@@ -81,16 +81,34 @@ For **Project Milestone 3**, you will need to submit your work across three plat
 2. **Google Drive**: Submit the code, output, and profiling results for each individual optimization.
 3. **Canvas**: Upload the project report.
 
-### Final Code Submission Guideline through Github
+### Code Submission Guideline through Github
 
 - Your **final** code submission (stacked optimizations or not) should be your `/project/src/layer/custom/m3-forward.cu` file.
   - This is your final submission that we will test for a combined optime of <= 80ms.
   - **Though streams is mandatory as part of your optimizations, your final submission for performance test must be done on a single stream.**
+- Your individual optimizations code submission will be in the `/project/m3` folder. Look under `m3` and find the optimization folders.
+  - **Each** optimization you implemented should have each own folder with the following requirements:
+    - name of the folder should have the following format:`req_#` or `op_#`. (see the optimization numbers in [optimizations](#optimizations))
+    - it should contain an non-stacked version of your implementation
+      - a functional copy of `m3-forward.cu` with **ONLY** this implementation added on from the base m2 implementation
+      - we will perform functionality checks on every individual optimization
+    - feel free to add more folders if needed.
+  - **You must have a folder for each optimization individually** even if you stacked all of them for your final submission.
 - Push your code to GitHub!
   - Only add your changes from `/project/src/layer/custom/m3-forward.cu`
 - **We strongly recommend that you periodically make commits**, local or not, to ensure that you have a record of your work saved. You can always just soft reset to merge your commits. It also provides proof in case something goes wrong with submissions.
 
-### Individual Optimization Submission Guideline through Google Drive
+``` 
+|---> /m3
+    |---> /req_0
+        |---> m3-forward.cu
+    |---> /req_1
+    |---> /req_2
+    |---> /op_2
+    |---> /op_3
+```
+
+### Profiling Results Submission Guideline through Google Drive
 
 - Your `netid@illinois.edu` email address is linked to a Google Account known as **Google Apps @ Illinois**. If you haven't set up this account yet, please follow the instructions provided [here](https://help.uillinois.edu/TDClient/42/UIUC/Requests/ServiceDet?ID=135).
 - Log in to your Google Apps @ Illinois account and go to Google Drive. Make sure to use your `@illinois.edu` Google account, not a personal Google account.
@@ -101,10 +119,7 @@ For **Project Milestone 3**, you will need to submit your work across three plat
 - Look under `m3` and find the optimization folders.
 - **Each** optimization you implemented should have each own folder with the following requirements:
   - name of the folder should have the following format:`req_#` or `op_#`. (see the optimization numbers in [optimizations](#optimizations))
-  - it should contain an non-stacked version of your implementation
-    - a functional copy of `m3-forward.cu` with **ONLY** this implementation added on from the base m2 implementation
-    - we will perform functionality checks on every individual optimization
-  - all profiling results (your outputted binary analysis files) that you included in your final report.
+  - it should contain all profiling results (your outputted binary analysis files) that you included in your final report.
   - feel free to add more folders if needed.
 - **You must have a folder for each optimization individually** even if you stacked all of them for your final submission.
 - Include the Google Drive link to the `m3` folder on the first page of your PDF report, and provide a link to the relevant subfolder in the section for each optimization.
@@ -112,7 +127,6 @@ For **Project Milestone 3**, you will need to submit your work across three plat
 ``` 
 |---> /m3
     |---> /req_0
-        |---> m3-forward.cu
         |---> m3.out
         |---> analysis.ncu-rep
         |---> output

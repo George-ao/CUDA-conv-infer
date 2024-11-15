@@ -37,6 +37,8 @@ but you have to provide your implementation in your code and sufficient profilin
 
 Although you are required to implement the Streams optimization, for the purpose of the final performance test, you should disable multiple streams and use a single stream in your `/project/src/layer/custom/m3-forward.cu`. This is because Op Times are not a reliable metric for evaluating multi-stream applications.
 
+Your final submission must have correct accuracy for any batch size. Therefore, avoid any optimizations that could impact accuracy in your final submission, such as FP16. You may still implement FP16 as an individual optimization and it will count towards the 8 points of additional optimizations.
+
 If you have done milestone 2 correctly, for a batch size of 10000, the sum between the first and second layer OP Times should equal about **200ms**.
 
 In order to achieve full credit for the performance in milestone 3, your final submission must bring down the sum of the op times to **80ms** or less for a batch size of 10000. Any submissions between **80ms** and **200ms** will be given a performance grade linearly extrapolated from the performance relative to these two values.

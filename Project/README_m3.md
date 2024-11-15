@@ -131,7 +131,7 @@ For **Project Milestone 3**, you will need to submit your work across three plat
     |---> /req_0
         |---> m3.out
         |---> analysis.ncu-rep
-        |---> output
+        |---> profile.out(optional)
         |---> analysis.nsys-rep(optional)
         |--->...( other useful profiling results)
     |---> /req_1

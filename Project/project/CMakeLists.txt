@@ -26,3 +26,6 @@ target_link_libraries(m1_gpu ece408net MiniDNNLib)
 
 add_executable(m2 m2.cc "${PROJECT_SOURCE_DIR}/src/layer/custom/matmul-unroll.cu")
 target_link_libraries(m2 ece408net MiniDNNLib)
+
+add_executable(m3 m3.cc "${PROJECT_SOURCE_DIR}/src/layer/custom/m3-forward.cu")
+target_link_libraries(m3 ece408net MiniDNNLib cublas)

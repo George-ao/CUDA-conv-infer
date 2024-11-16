@@ -189,6 +189,8 @@ In this optimization task, the goal is to overlap data transfer with kernel exec
 - Define additional global or static variables to store the host memory pointers.
 - Do all the work in the `conv_forward_gpu_prolog` function.
 
+To overlap kernel execution and data transfers, the host memory involved in the data transfer must be pinned memory. See [How to Overlap Data Transfers in CUDA C/C++](https://developer.nvidia.com/blog/how-overlap-data-transfers-cuda-cc/).
+
 #### req_1 Tensor Cores/Joint Register and Shared Memory Tiling
 
 To complete this optimization, you must choose one of the following advanced matrix multiplication acceleration techniques: Tensor Cores or Joint Register and Shared Memory Tiling.

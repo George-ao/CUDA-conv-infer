@@ -4,7 +4,7 @@
 
 #define TILE_WIDTH 16
 #define BLOCK_SIZE 256
-#define NUM_STREAMS 4
+#define NUM_STREAMS 100
 
 __global__ void matrix_unrolling_kernel(const float *input, float *output,
                                         const int Batch, const int Channel,
@@ -131,15 +131,10 @@ __host__ void GPUInterface::conv_forward_gpu_prolog(const float *host_output, co
 
     cudaMemcpy(*device_mask_ptr, host_mask, mask_size, cudaMemcpyHostToDevice);
     // m3: merge two kernel with multiple streams
-
     float *unrolled_matrix;  // Pointer to device memory for storing the unrolled matrix
     float *matmul_output;    // Pointer to device memory for storing the result of matrix multiplication
     cudaMalloc((void**)&unrolled_matrix, (size_t) Batch * Channel * K * K * Height_out * Width_out * sizeof(float));
     cudaMalloc((void**)&matmul_output, (Batch * Map_out * Height_out * Width_out) * sizeof(float));
-    const int numARows = Map_out;
-    const int numAColumns = Channel * K * K;
-    const int numBRows = Channel * K * K;
-    const int numCRows = numARows;
         // create streams
     const int stream_size = Batch / NUM_STREAMS;
     cudaStream_t streams[NUM_STREAMS];
@@ -147,53 +142,52 @@ __host__ void GPUInterface::conv_forward_gpu_prolog(const float *host_output, co
         // divide work
     const int input_copy = Channel * Height * Width;
     const int output_copy = Height_out * Width_out;
-    const int output_copy_2 = Height_out * Width_out * Map_out;
+    // const int output_copy_2 = Height_out * Width_out * Map_out;
 
     // change output directly
-    float *modifiable_host_output = const_cast<float*>(host_output);
+    // float *modifiable_host_output = const_cast<float*>(host_output);
 
     for (int i = 0; i < NUM_STREAMS; ++i) 
     {
         int offset = i * stream_size;
-
         cudaMemcpyAsync( (*device_input_ptr) + offset * input_copy, host_input + offset * input_copy, stream_size * input_copy * sizeof(float), cudaMemcpyHostToDevice, streams[i]);
-        // int numBColumns = Height_out * (Batch * Width_out);
-        // int numBColumns = Height_out * stream_size * Width_out;
-        // int numCColumns = numBColumns;
-
         // TODO: Set the kernel dimensions and call the matrix unrolling kernel.
         dim3 unroll_kernel_grid_dim(ceil(1.0 * Height_out * Width_out / BLOCK_SIZE), stream_size, Channel);
         dim3 unroll_kernel_block_dim(BLOCK_SIZE, 1, 1);
-        matrix_unrolling_kernel<<<unroll_kernel_grid_dim, unroll_kernel_block_dim, streams[i]>>>(*device_input_ptr + offset * input_copy, unrolled_matrix + offset * output_copy, Batch, Channel, Height, Width, K);
-        // TODO: Set the kernel dimensions and call the matmul kernel
-        // dim3 matmul_kernel_grid_dim(ceil(1.0 * numCColumns/ TILE_WIDTH), ceil(1.0 * numCRows/ TILE_WIDTH), 1);
-        // dim3 matmul_kernel_block_dim(TILE_WIDTH, TILE_WIDTH, 1);
-        // matrixMultiplyShared<<<matmul_kernel_grid_dim, matmul_kernel_block_dim, streams[i]>>>(*device_mask_ptr, unrolled_matrix + offset * output_copy, matmul_output + offset * output_copy, numARows, numAColumns,
-        //     numBRows, numBColumns, numCRows, numCColumns);
-        // // Permute the result of matrix multiplication
-        // const int out_image_size = Height_out * Width_out;
-        // dim3 permute_kernel_grid_dim((out_image_size - 1) / BLOCK_SIZE + 1, Batch, 1);
-        // matrix_permute_kernel<<<permute_kernel_grid_dim, BLOCK_SIZE, streams[i]>>>(
-        //     matmul_output + offset * output_copy, (*device_output_ptr)  + offset * output_copy_2, Map_out, Batch, out_image_size
-        // );
-        // cudaMemcpyAsync(modifiable_host_output + offset * output_copy_2, (*device_output_ptr) + offset * output_copy_2, stream_size * output_copy_2 * sizeof(float), cudaMemcpyDeviceToHost, streams[i]);
+        matrix_unrolling_kernel<<<unroll_kernel_grid_dim, unroll_kernel_block_dim, 0, streams[i]>>>(*device_input_ptr + offset * input_copy, unrolled_matrix + offset * output_copy, Batch, Channel, Height, Width, K);
     }
-    // for (int i = 0; i < NUM_STREAMS; i++) cudaStreamSynchronize(streams[i]);
+    // for (int i = 0; i < NUM_STREAMS; ++i) 
+    // {
+    //     int offset = i * stream_size;
+    //     cudaMemcpyAsync( (*device_input_ptr) + offset * input_copy, host_input + offset * input_copy, stream_size * input_copy * sizeof(float), cudaMemcpyHostToDevice, streams[i]);
+    // }
+    // for (int i = 0; i < NUM_STREAMS; ++i) 
+    // {
+    //     int offset = i * stream_size;
+    //     // TODO: Set the kernel dimensions and call the matrix unrolling kernel.
+    //     dim3 unroll_kernel_grid_dim(ceil(1.0 * Height_out * Width_out / BLOCK_SIZE), stream_size, Channel);
+    //     dim3 unroll_kernel_block_dim(BLOCK_SIZE, 1, 1);
+    //     matrix_unrolling_kernel<<<unroll_kernel_grid_dim, unroll_kernel_block_dim, 0, streams[i]>>>(*device_input_ptr + offset * input_copy, unrolled_matrix + offset * output_copy, Batch, Channel, Height, Width, K);
+    // }    
+    // cudaDeviceSynchronize();
+    int numARows = Map_out;
+    int numAColumns = Channel * K * K;
+    int numBRows = Channel * K * K;
     int numBColumns = Height_out * (Batch * Width_out);
+    int numCRows = numARows;
     int numCColumns = numBColumns;
+
     dim3 matmul_kernel_grid_dim(ceil(1.0 * numCColumns/ TILE_WIDTH), ceil(1.0 * numCRows/ TILE_WIDTH), 1);
     dim3 matmul_kernel_block_dim(TILE_WIDTH, TILE_WIDTH, 1);
     matrixMultiplyShared<<<matmul_kernel_grid_dim, matmul_kernel_block_dim>>>(*device_mask_ptr, unrolled_matrix, matmul_output, numARows, numAColumns,
         numBRows, numBColumns, numCRows, numCColumns);
+
     // Permute the result of matrix multiplication
     const int out_image_size = Height_out * Width_out;
     dim3 permute_kernel_grid_dim((out_image_size - 1) / BLOCK_SIZE + 1, Batch, 1);
     matrix_permute_kernel<<<permute_kernel_grid_dim, BLOCK_SIZE>>>(
-        matmul_output + offset * output_copy, (*device_output_ptr)  + offset * output_copy_2, Map_out, Batch, out_image_size
+        matmul_output, *device_output_ptr, Map_out, Batch, out_image_size
     );
-    cudaMemcpyAsync(modifiable_host_output + offset * output_copy_2, (*device_output_ptr) + offset * output_copy_2, stream_size * output_copy_2 * sizeof(float), cudaMemcpyDeviceToHost, streams[i]);
-
-    cudaDeviceSynchronize();
 
     for (int i=0; i<NUM_STREAMS; i++) cudaStreamDestroy(streams[i]);
 
@@ -210,10 +204,10 @@ __host__ void GPUInterface::conv_forward_gpu(float *device_output, const float *
 __host__ void GPUInterface::conv_forward_gpu_epilog(float *host_output, float *device_output, float *device_input, float *device_mask, const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
 {
     // TODO: Copy the output back to host
-    // int Height_out = Height - K + 1;
-    // int Width_out = Width - K + 1;
-    // int output_size = (Batch * Map_out * Height_out * Width_out) * sizeof(float);
-    // cudaMemcpy(host_output, device_output, output_size, cudaMemcpyDeviceToHost);
+    int Height_out = Height - K + 1;
+    int Width_out = Width - K + 1;
+    int output_size = (Batch * Map_out * Height_out * Width_out) * sizeof(float);
+    cudaMemcpy(host_output, device_output, output_size, cudaMemcpyDeviceToHost);
 
     // TODO: Free device memory
     cudaFree(device_output);

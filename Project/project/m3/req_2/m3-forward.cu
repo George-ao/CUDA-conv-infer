@@ -53,7 +53,6 @@ __global__ void matrix_mul_built_in_unrolling_kernel(float *device_output, const
             int p = offset / K;
             int q = offset % K;
             tileB[ty][tx] = in_4d(cur_batch, c, h + p, w + q);
-            // tileB[ty][tx] = B[((size_t) tileId * TILE_WIDTH + ty) * numBColumns + col];
         } else {
             tileB[ty][tx] = 0;
         }

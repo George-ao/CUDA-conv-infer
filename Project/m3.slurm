@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --constraint="projects"
+#SBATCH --constraint="projects,perf,nvperf"
 #SBATCH --gpus-per-node=1
 #SBATCH --gpu-bind=closest
 #SBATCH --account=bche-delta-gpu
@@ -18,11 +18,13 @@ module load cuda
 
 echo -e "job $SLURM_JOBID is starting on `hostname`\n\n"
 
-srun ./m3 1000 > m3.out
-# { time srun ./m3 10000 > m3.out; } 2> time_stream.out
+# check mem leak
+# srun compute-sanitizer ./m3 
+# srun ./m3 1000 > m3.out
+{ time srun ./m3 10000 > m3_req0.out; } 2> time_req0.out
 
 # Generate nsys profile information, output will be in profile.out
-# srun nsys profile --stats=true ./m3 > profile.out
+# srun nsys profile --stats=true ./m3 > profile_req0.out
 
 # Generate analysis_file.ncu-rep with a detailed profiling result
-# ncu --set full -f -o analysis_file ./m3 > m3.out
+# ncu --set full -f -o analysis_file_req0 ./m3 

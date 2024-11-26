@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --constraint="projects,perf,nvperf"
+#SBATCH --constraint="projects"
 #SBATCH --gpus-per-node=1
 #SBATCH --gpu-bind=closest
 #SBATCH --account=bche-delta-gpu
@@ -20,8 +20,8 @@ echo -e "job $SLURM_JOBID is starting on `hostname`\n\n"
 
 # check mem leak
 # srun compute-sanitizer ./m3 
-# srun ./m3 1000 > m3.out
-{ time srun ./m3 10000 > m3_req0.out; } 2> time_req0.out
+srun ./m3 10000 > m3.out
+# { time srun ./m3 10000 > m3_req0.out; } 2> time_req0.out
 
 # Generate nsys profile information, output will be in profile.out
 # srun nsys profile --stats=true ./m3 > profile_req0.out

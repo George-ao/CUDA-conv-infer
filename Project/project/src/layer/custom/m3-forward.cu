@@ -3,7 +3,7 @@
 #include "gpu-new-forward.h"
 
 #define TILE_WIDTH 16
-#define NUM_STREAMS 100
+#define NUM_STREAMS 4
 
 __global__ void matrix_mul_built_in_unrolling_kernel(float *device_output, const float *device_input, const float *device_mask, 
     const int Batch, const int Map_out, const int Channel, 
@@ -83,6 +83,15 @@ __host__ void GPUInterface::conv_forward_gpu_prolog(const float *host_output, co
     int output_size = (Batch * Map_out * Height_out * Width_out) * sizeof(float);
     int mask_size = (Map_out * Channel * K * K) * sizeof(float);
 
+
+    // allocate pinned memory
+    float * pinned_input;
+    float * pinned_output;
+    cudaMallocHost((void **)&pinned_input, input_size);
+    cudaMallocHost((void **)&pinned_output, output_size);
+    cudaMemcpy(pinned_input, host_input, input_size, cudaMemcpyHostToHost);
+
+
     cudaMalloc((void **)device_input_ptr, input_size);
     cudaMalloc((void **)device_output_ptr, output_size);
     cudaMalloc((void **)device_mask_ptr, mask_size);
@@ -103,26 +112,32 @@ __host__ void GPUInterface::conv_forward_gpu_prolog(const float *host_output, co
     for (int i = 0; i < NUM_STREAMS; ++i) 
     {
         int offset = i * stream_size;
-        cudaMemcpyAsync((*device_input_ptr) + offset * input_copy, host_input + offset * input_copy, stream_size * input_copy * sizeof(float), cudaMemcpyHostToDevice, streams[i]);
+        // cudaMemcpyAsync((*device_input_ptr) + offset * input_copy, host_input + offset * input_copy, stream_size * input_copy * sizeof(float), cudaMemcpyHostToDevice, streams[i]);
+        cudaMemcpyAsync((*device_input_ptr) + offset * input_copy, pinned_input + offset * input_copy, stream_size * input_copy * sizeof(float), cudaMemcpyHostToDevice, streams[i]);        
         dim3 Dimblock(TILE_WIDTH, TILE_WIDTH, 1);
         int W_grid = ceil(1.0 * Height_out * Width_out / TILE_WIDTH);
         int H_grid = ceil(1.0 * Map_out / TILE_WIDTH);
         dim3 Dimgrid(W_grid, H_grid, stream_size);
         matrix_mul_built_in_unrolling_kernel<<<Dimgrid, Dimblock, 0, streams[i]>>>(*device_output_ptr + offset * output_copy, 
             *device_input_ptr + offset * input_copy, *device_mask_ptr, stream_size, Map_out, Channel, Height, Width, K);
-        cudaMemcpyAsync(modifiable_host_output + offset * output_copy, *device_output_ptr + offset * output_copy, 
+        // cudaMemcpyAsync(modifiable_host_output + offset * output_copy, *device_output_ptr + offset * output_copy, 
+        //     stream_size * output_copy * sizeof(float), cudaMemcpyDeviceToHost, streams[i]);
+        cudaMemcpyAsync(pinned_output + offset * output_copy, *device_output_ptr + offset * output_copy, 
             stream_size * output_copy * sizeof(float), cudaMemcpyDeviceToHost, streams[i]);
     }
-    
+    // copy back
+    cudaMemcpy(modifiable_host_output, pinned_output, output_size, cudaMemcpyHostToHost);
 }
 
 
-__host__ void GPUInterface::conv_forward_gpu(float *device_output, const float *device_input, const float *device_mask, const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
+__host__ void GPUInterface::conv_forward_gpu(float *device_output, const float *device_input, const float *device_mask, 
+    const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
 {
 }
 
 
-__host__ void GPUInterface::conv_forward_gpu_epilog(float *host_output, float *device_output, float *device_input, float *device_mask, const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
+__host__ void GPUInterface::conv_forward_gpu_epilog(float *host_output, float *device_output, float *device_input, float *device_mask, 
+    const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
 {
     // TODO: Free device memory
     cudaFree(device_output);

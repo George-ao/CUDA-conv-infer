@@ -19,8 +19,8 @@ module load cuda
 echo -e "job $SLURM_JOBID is starting on `hostname`\n\n"
 
 # check mem leak
-srun compute-sanitizer ./m3 
-# srun ./m3 1000 > m3.out
+# srun compute-sanitizer ./m3 
+srun ./m3 > m3.out
 # { time srun ./m3 > m3_req0.out; } 2> time_req0.out
 
 # Generate nsys profile information, output will be in profile.out

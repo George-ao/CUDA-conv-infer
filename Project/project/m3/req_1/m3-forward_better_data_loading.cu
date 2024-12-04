@@ -11,6 +11,8 @@ using namespace nvcuda;
 #define WMMA_N 16
 #define WMMA_K 16
 
+
+
 __global__ void matrix_unrolling_kernel(const float *input, float *output,
                                         const int Batch, const int Channel,
                                         const int Height, const int Width,
@@ -58,16 +60,6 @@ __global__ void matrix_unrolling_kernel(const float *input, float *output,
                 out_3d(b, h_unroll, w_unroll) = in_4d(b, c, h + p, w + q);
             }
         }
-        // int w_unroll = h * Width_out + w;
-        // int w_base = c * K * K;
-        // for (int p=0; p<K; p++)
-        // {
-        //     for( int q=0; q<K; q++)
-        //     {
-        //         int h_unroll = w_base + p * K + q;
-        //         out_3d(b, h_unroll, w_unroll) = in_4d(b, c, h+p, w+q);
-        //     }
-        // }
     }
 
     #undef in_4d
@@ -86,42 +78,37 @@ __global__ void matrixMultiplyShared(const float *A, const float *B, float *C,
     __shared__ float tileC[TILE_WIDTH][TILE_WIDTH];
 
     int by = blockIdx.y, bx = blockIdx.x, ty = threadIdx.y, tx = threadIdx.x;
-    // new row
-    int row = (by * 2 + ty) * TILE_WIDTH/2; // blockDim.y = 2 
-    int col = bx * TILE_WIDTH + tx;
 
-    
+    int row = by * TILE_WIDTH + ty, col = bx * TILE_WIDTH + tx;
     wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
     wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
     wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
     wmma::fill_fragment(c_frag, 0.0f);
 
     for (int tileId = 0; tileId < (numAColumns - 1) / TILE_WIDTH + 1; tileId++) {
-        // eight read for each thread to fill the shared memory
-        for ( int i=0; i<8; i++)
-        {
-            if (row + i < numARows && tileId * TILE_WIDTH + tx < numAColumns) {
-                tileA[ty * TILE_WIDTH/2 +i][tx] = A[(size_t) (row+i) * numAColumns + tileId * TILE_WIDTH + tx];
-            } else {
-                tileA[ty * TILE_WIDTH/2 +i][tx] = 0;
-            }
-            if (col < numBColumns && tileId * TILE_WIDTH + ty*TILE_WIDTH/2+i < numBRows) {
-                tileB[ty * TILE_WIDTH/2 +i][tx] = B[((size_t) tileId * TILE_WIDTH + ty*TILE_WIDTH/2 +i) * numBColumns + col];
-            } else {
-                tileB[ty * TILE_WIDTH/2 +i][tx] = 0;
-            }
+        if (row < numARows && tileId * TILE_WIDTH + tx < numAColumns) {
+            tileA[ty][tx] = A[(size_t) row * numAColumns + tileId * TILE_WIDTH + tx];
+        } else {
+            tileA[ty][tx] = 0;
+        }
+        if (col < numBColumns && tileId * TILE_WIDTH + ty < numBRows) {
+            tileB[ty][tx] = B[((size_t) tileId * TILE_WIDTH + ty) * numBColumns + col];
+        } else {
+            tileB[ty][tx] = 0;
         }
         __syncthreads();
-        wmma::load_matrix_sync(a_frag, &tileA[0][0], TILE_WIDTH);
-        wmma::load_matrix_sync(b_frag, &tileB[0][0], TILE_WIDTH);
-        wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
-        // __syncthreads();
+        // one warp only
+        if (ty < 2)
+        {
+            wmma::load_matrix_sync(a_frag, &tileA[0][0], TILE_WIDTH);
+            wmma::load_matrix_sync(b_frag, &tileB[0][0], TILE_WIDTH);
+            wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+        }
+        __syncthreads();
     }
-    wmma::store_matrix_sync(&tileC[0][0], c_frag, TILE_WIDTH, wmma::mem_row_major);
-    for (int i=0; i<8; i++)
-    {
-        if (row + i < numCRows && col < numCColumns) C[(size_t) (row+i) * numCColumns + col] = tileC[ty * TILE_WIDTH/2 +i][tx];
-    }
+    if (ty < 2) wmma::store_matrix_sync(&tileC[0][0], c_frag, TILE_WIDTH, wmma::mem_row_major);
+    __syncthreads();
+    if (row < numCRows && col < numCColumns) C[row * numCColumns + col] = tileC[ty][tx];
 }
 
 // Permutes the matmul result.
@@ -195,10 +182,8 @@ __host__ void GPUInterface::conv_forward_gpu(float *device_output, const float *
     int numCRows = numARows;
     int numCColumns = numBColumns;
 
-    //
     dim3 matmul_kernel_grid_dim(ceil(1.0 * numCColumns/ TILE_WIDTH), ceil(1.0 * numCRows/ TILE_WIDTH), 1);
-    dim3 matmul_kernel_block_dim(16, 2, 1);
-
+    dim3 matmul_kernel_block_dim(TILE_WIDTH, TILE_WIDTH, 1);
     matrixMultiplyShared<<<matmul_kernel_grid_dim, matmul_kernel_block_dim>>>(device_mask, unrolled_matrix, matmul_output, numARows, numAColumns,
         numBRows, numBColumns, numCRows, numCColumns);
 

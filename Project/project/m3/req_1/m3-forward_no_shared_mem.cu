@@ -212,7 +212,7 @@ __host__ void GPUInterface::conv_forward_gpu(float *device_output, const float *
     dim3 matmul_kernel_block_dim(WARP_SIZE, 1, 1);
     wmma_mul<<<matmul_kernel_grid_dim, matmul_kernel_block_dim>>>(device_mask_half, device_unrolled_half, device_output_padding, numARows_half, 
         numAColumns_half, numBRows_half, numBColumns_half, numCRows_half, numCColumns_half);
-    // copy padding to output
+    // padding to output
     dim3 padding_to_output_grid_dim(ceil(1.0 * numCRows_half * numCColumns_half / BLOCK_SIZE), 1, 1);
     dim3 padding_to_output_block_dim(BLOCK_SIZE, 1, 1);
     padding_to_output<<<padding_to_output_grid_dim, padding_to_output_block_dim>>>(device_output_padding, 

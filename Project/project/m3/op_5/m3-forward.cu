@@ -26,17 +26,10 @@ __global__ void matrix_unrolling_kernel(const float *input, float *output,
     */
     const int Height_out = Height - K + 1;
     const int Width_out = Width - K + 1;
-    // (void)Height_out; // silence declared but never referenced warning. remove this line when you start working
-    // (void)Width_out; // silence declared but never referenced warning. remove this line when you start working
-
-    // We have some nice #defs for you below to simplify indexing. Feel free to use them, or create your own.
-    // An example use of these macros:
-    // float a = in_4d(0,0,0,0)
 
     #define in_4d(i3, i2, i1, i0) input[(i3) * (Channel * Height * Width) + (i2) * (Height * Width) + (i1) * (Width) + i0]
     #define out_3d(i2, i1, i0) output[(i2) * (Height_out * Width_out) + (i1) * (Batch * Height_out * Width_out) + i0]
 
-    // TODO: Insert your input matrix unrolling kernel code here
     int idx = blockIdx.x * blockDim.x + threadIdx.x;   
     int w = idx % Width_out;
     int h = idx / Width_out;
@@ -61,11 +54,13 @@ __global__ void matrix_unrolling_kernel(const float *input, float *output,
     #undef out_3d
 }
 
+// half: mul + add
 __global__ void fp16_mul(const float *A, const float *B, float *C,
                                      int numARows, int numAColumns,
                                      int numBRows, int numBColumns,
                                      int numCRows, int numCColumns)
 {
+    // half
     __shared__ half tileA[TILE_WIDTH][TILE_WIDTH];
     __shared__ half tileB[TILE_WIDTH][TILE_WIDTH];
 

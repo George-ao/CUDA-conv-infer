@@ -18,14 +18,11 @@ module load cuda
 
 echo -e "job $SLURM_JOBID is starting on `hostname`\n\n"
 
-
-# srun nsys profile --stats=true ./m2 10000 > profile.out
-srun ncu -f --set full -o analysis_file ./m2 10000 > ncu.out
-
-
-# srun ./m2 10000 > m2.out
-# { time srun ./m2 10000 > m2.out; } 2> time.out
-# /bin/bash -c "cuda-memcheck ./m2 1000"
+srun nsys profile --stats=true ./m2 10000 > profile.out
+srun ncu -f --set full -o analysis_file ./m2 10000 
+{ time srun ./m2 100 > m2_100.out; } 2> time_m2_100.out
+{ time srun ./m2 1000 > m2_1000.out; } 2> time_m2_1000.out
+{ time srun ./m2 > m2_10000.out; } 2> time_m2_10000.out
 
 # Generate nsys profile information, output will be in profile.out
 # srun nsys profile --stats=true ./m2 > profile.out

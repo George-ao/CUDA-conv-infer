@@ -124,12 +124,13 @@ __host__ void GPUInterface::conv_forward_gpu_prolog(const float *host_output, co
     int input_size =  (Batch * Channel * Height * Width) * sizeof(float);
     int output_size = (Batch * Map_out * Height_out * Width_out) * sizeof(float);
     int mask_size = (Map_out * Channel * K * K) * sizeof(float);
-    // allocate pinned memory
+    // pinned memory
     float * pinned_input;
     float * pinned_output;
-    cudaMallocHost((void **)&pinned_input, input_size);
-    cudaMallocHost((void **)&pinned_output, output_size);
-    cudaMemcpy(pinned_input, host_input, input_size, cudaMemcpyHostToHost);
+    cudaHostRegister((void*)const_cast<float*>(host_input), input_size, cudaHostRegisterDefault);
+    cudaHostRegister((void*)const_cast<float*>(host_output), output_size, cudaHostRegisterDefault);
+    pinned_input = const_cast<float*>(host_input);
+    pinned_output = const_cast<float*>(host_output);
 
     // dev memory
     cudaMalloc((void **)device_input_ptr, input_size);

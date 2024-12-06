@@ -1,79 +1,56 @@
 #include <cmath>
 #include <iostream>
 #include "gpu-new-forward.h"
+#include <mma.h>
+using namespace nvcuda;
 
 #define TILE_WIDTH 16
 #define BLOCK_SIZE 256
-#define NUM_STREAMS 100
+#define WARP_SIZE 32
+#define WMMA_M 16
+#define WMMA_N 16
+#define WMMA_K 16
 
-__global__ void matrix_unrolling_kernel(const float *input, float *output,
-                                        const int Batch, const int Channel,
-                                        const int Height, const int Width,
-                                        const int K) {
-    /*
-    Modify this function to implement the input matrix unrolling kernel.
 
-    Function paramter definitions:
-    input - input
-    output - output
-    Batch - batch_size (number of images in x)
-    Channel - number of input feature maps
-    Height - input height dimension
-    Width - input width dimension
-    K - kernel height and width (K x K)
-    */
-    const int Height_out = Height - K + 1;
-    const int Width_out = Width - K + 1;
-    // (void)Height_out; // silence declared but never referenced warning. remove this line when you start working
-    // (void)Width_out; // silence declared but never referenced warning. remove this line when you start working
-
-    // We have some nice #defs for you below to simplify indexing. Feel free to use them, or create your own.
-    // An example use of these macros:
-    // float a = in_4d(0,0,0,0)
-
-    #define in_4d(i3, i2, i1, i0) input[(i3) * (Channel * Height * Width) + (i2) * (Height * Width) + (i1) * (Width) + i0]
-    #define out_3d(i2, i1, i0) output[(i2) * (Height_out * Width_out) + (i1) * (Batch * Height_out * Width_out) + i0]
-
-    // TODO: Insert your input matrix unrolling kernel code here
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;   
-    int w = idx % Width_out;
-    int h = idx / Width_out;
-    int b = blockIdx.y;
-    int c = blockIdx.z;
-
-    if (idx < Height_out * Width_out)
-    {
-        size_t w_unroll = static_cast<size_t>(h) * Width_out + w;
-        size_t w_base = static_cast<size_t>(c) * K * K;
-        for (int p = 0; p < K; p++) 
-        {
-            for (int q = 0; q < K; q++) 
-            {
-                size_t h_unroll = w_base + static_cast<size_t>(p) * K + q;
-                out_3d(b, h_unroll, w_unroll) = in_4d(b, c, h + p, w + q);
-            }
-        }
-    }
-
-    #undef in_4d
-    #undef out_3d
-}
-
-// Tiled matrix multiplication kernel. Computes C = AB
-// You don't need to modify this kernel.
-__global__ void matrixMultiplyShared(const float *A, const float *B, float *C,
-                                     int numARows, int numAColumns,
-                                     int numBRows, int numBColumns,
-                                     int numCRows, int numCColumns)
+__global__ void matrix_mul_built_in_unrolling_kernel(float * __restrict__ device_output, const float * __restrict__ 
+    device_input, const float * __restrict__ device_mask, 
+    const int Batch, const int Map_out, const int Channel, 
+    const int Height, const int Width, const int K)
 {
-    __shared__ float tileA[TILE_WIDTH][TILE_WIDTH];
-    __shared__ float tileB[TILE_WIDTH][TILE_WIDTH];
+    __shared__ half tileA[TILE_WIDTH][TILE_WIDTH];
+    __shared__ half tileB[TILE_WIDTH][TILE_WIDTH];
+    __shared__ float tileC[TILE_WIDTH][TILE_WIDTH];
+    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
+    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
+    wmma::fill_fragment(c_frag, 0.0f);
+    // load and unroll input 
+    int by = blockIdx.y;
+    int bx = blockIdx.x;
+    int ty = threadIdx.y;
+    int tx = threadIdx.x;
+    int cur_batch = blockIdx.z; 
 
-    int by = blockIdx.y, bx = blockIdx.x, ty = threadIdx.y, tx = threadIdx.x;
+    int row = by * TILE_WIDTH + ty;
+    int col = bx * TILE_WIDTH + tx;
 
-    int row = by * TILE_WIDTH + ty, col = bx * TILE_WIDTH + tx;
-    float val = 0;
+    int Height_out = Height - K + 1;
+    int Width_out = Width - K + 1;
 
+    #define in_4d(i3, i2, i1, i0) device_input[(i3) * (Channel * Height * Width) + (i2) * (Height * Width) + (i1) * (Width) + i0]
+    #define out_3d(i3, i2, i1) device_output[(i3) * (Map_out * Height_out * Width_out) + (i2) * (Height_out * Width_out) + i1]
+
+    // perform multiplication
+    const float *A = device_mask;
+    
+    int numARows = Map_out;
+    int numAColumns = Channel * K * K;
+    int numBRows = Channel * K * K;
+    int numBColumns = Height_out * Width_out;
+    int numCRows = numARows;
+    int numCColumns = numBColumns;
+
+    #pragma unroll
     for (int tileId = 0; tileId < (numAColumns - 1) / TILE_WIDTH + 1; tileId++) {
         if (row < numARows && tileId * TILE_WIDTH + tx < numAColumns) {
             tileA[ty][tx] = A[(size_t) row * numAColumns + tileId * TILE_WIDTH + tx];
@@ -81,42 +58,39 @@ __global__ void matrixMultiplyShared(const float *A, const float *B, float *C,
             tileA[ty][tx] = 0;
         }
         if (col < numBColumns && tileId * TILE_WIDTH + ty < numBRows) {
-            tileB[ty][tx] = B[((size_t) tileId * TILE_WIDTH + ty) * numBColumns + col];
+            size_t cur_row = tileId * TILE_WIDTH + ty;
+            int w = col % Width_out;
+            int h = col / Width_out;
+            int c = cur_row / (K * K);
+            int offset = cur_row % (K * K);
+            int p = offset / K;
+            int q = offset % K;
+            tileB[ty][tx] = in_4d(cur_batch, c, h + p, w + q);
         } else {
             tileB[ty][tx] = 0;
         }
         __syncthreads();
-
-        if (row < numCRows && col < numCColumns) {
-            for (int i = 0; i < TILE_WIDTH; i++) {
-                val += tileA[ty][i] * tileB[i][tx];
-            }
+        if (ty < 2)
+        {
+            wmma::load_matrix_sync(a_frag, &tileA[0][0], TILE_WIDTH);
+            wmma::load_matrix_sync(b_frag, &tileB[0][0], TILE_WIDTH);
+            wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
         }
         __syncthreads();
     }
 
-    if (row < numCRows && col < numCColumns) {
-        C[row * numCColumns + col] = val;
-    }
+    if (ty < 2) wmma::store_matrix_sync(&tileC[0][0], c_frag, TILE_WIDTH, wmma::mem_row_major);
+    __syncthreads();
+    if (row < numCRows && col < numCColumns) out_3d(cur_batch, row, col) = tileC[ty][tx];
+
+    #undef in_4d
+    #undef out_3d
 }
 
-// Permutes the matmul result.
-// The output feature map after matmul is of shape Map_out x Batch x Height_out x Width_out,
-// and we need to permute it into Batch x Map_out x Height_out x Width_out.
-// You don't need to modify this kernel.
-__global__ void matrix_permute_kernel(const float *input, float *output, int Map_out,
-                                      int Batch, int image_size) {
-    int b = blockIdx.y;
-    int x = blockIdx.x * BLOCK_SIZE + threadIdx.x;
-    if (x < image_size) {
-        for (int m = 0; m < Map_out; m++) {
-            output[b * Map_out * image_size + m * image_size + x] =
-                    input[m * Batch * image_size + b * image_size + x];
-        }
-    }
-}
 
-__host__ void GPUInterface::conv_forward_gpu_prolog(const float *host_output, const float *host_input, const float *host_mask, float **device_output_ptr, float **device_input_ptr, float **device_mask_ptr, const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
+__host__ void GPUInterface::conv_forward_gpu_prolog(const float * __restrict__ host_output, const float * __restrict__ 
+    host_input, const float * __restrict__ host_mask, float ** __restrict__ device_output_ptr, float ** __restrict__ 
+    device_input_ptr, float ** __restrict__ device_mask_ptr, const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
 {
     int Height_out = Height - K + 1;
     int Width_out = Width - K + 1;
@@ -124,87 +98,49 @@ __host__ void GPUInterface::conv_forward_gpu_prolog(const float *host_output, co
     int input_size =  (Batch * Channel * Height * Width) * sizeof(float);
     int output_size = (Batch * Map_out * Height_out * Width_out) * sizeof(float);
     int mask_size = (Map_out * Channel * K * K) * sizeof(float);
-    // pinned memory
-    float * pinned_input;
-    float * pinned_output;
-    cudaHostRegister((void*)const_cast<float*>(host_input), input_size, cudaHostRegisterDefault);
-    cudaHostRegister((void*)const_cast<float*>(host_output), output_size, cudaHostRegisterDefault);
-    pinned_input = const_cast<float*>(host_input);
-    pinned_output = const_cast<float*>(host_output);
 
-    // dev memory
     cudaMalloc((void **)device_input_ptr, input_size);
     cudaMalloc((void **)device_output_ptr, output_size);
     cudaMalloc((void **)device_mask_ptr, mask_size);
 
+    cudaMemcpy(*device_input_ptr, host_input, input_size, cudaMemcpyHostToDevice);
     cudaMemcpy(*device_mask_ptr, host_mask, mask_size, cudaMemcpyHostToDevice);
-    float *unrolled_matrix;  // Pointer to device memory for storing the unrolled matrix
-    float *matmul_output;    // Pointer to device memory for storing the result of matrix multiplication
-    cudaMalloc((void**)&unrolled_matrix, (size_t) Batch * Channel * K * K * Height_out * Width_out * sizeof(float));
-    cudaMalloc((void**)&matmul_output, (Batch * Map_out * Height_out * Width_out) * sizeof(float));
-
-    // create streams
-    const int stream_size = Batch / NUM_STREAMS;
-    cudaStream_t streams[NUM_STREAMS];
-    for (int i=0; i<NUM_STREAMS; i++) cudaStreamCreate(&streams[i]);
-    const int input_copy = Channel * Height * Width;
-    const int mid_copy = Height_out * Width_out;
-    const int output_copy = Map_out * Height_out * Width_out;
-
-    // change output directly
-    float *modifiable_host_output = const_cast<float*>(host_output);
-
-    int numARows = Map_out;
-    int numAColumns = Channel * K * K;
-    int numBRows = Channel * K * K;
-    int numBColumns = Height_out * (Batch * Width_out);
-    int numCRows = numARows;
-    int numCColumns = numBColumns;
-
-    for (int i = 0; i < NUM_STREAMS; ++i) 
-    {
-        int offset = i * stream_size;
-        cudaMemcpyAsync((*device_input_ptr) + offset * input_copy, pinned_input + offset * input_copy, 
-            stream_size * input_copy * sizeof(float), cudaMemcpyHostToDevice, streams[i]);  
-        // unroll
-        dim3 unroll_kernel_grid_dim(ceil(1.0 * Height_out * Width_out / BLOCK_SIZE), stream_size, Channel);
-        dim3 unroll_kernel_block_dim(BLOCK_SIZE, 1, 1);
-        matrix_unrolling_kernel<<<unroll_kernel_grid_dim, unroll_kernel_block_dim, 0, streams[i]>>>(*device_input_ptr + offset * input_copy, 
-            unrolled_matrix + offset * mid_copy, Batch, Channel, Height, Width, K);
-        // matmul
-        dim3 matmul_kernel_grid_dim(ceil(1.0 * stream_size * mid_copy/ TILE_WIDTH), ceil(1.0 * numCRows/ TILE_WIDTH), 1);
-        dim3 matmul_kernel_block_dim(TILE_WIDTH, TILE_WIDTH, 1);
-        matrixMultiplyShared<<<matmul_kernel_grid_dim, matmul_kernel_block_dim>>>(*device_mask_ptr, unrolled_matrix + offset * mid_copy, 
-            matmul_output + offset * mid_copy, numARows, numAColumns, numBRows, numBColumns, numCRows, numCColumns);
-
-        // permute
-        const int out_image_size = Height_out * Width_out;
-        dim3 permute_kernel_grid_dim((out_image_size - 1) / BLOCK_SIZE + 1, stream_size, 1);
-        matrix_permute_kernel<<<permute_kernel_grid_dim, BLOCK_SIZE>>>(
-            matmul_output + offset * mid_copy , *device_output_ptr + offset * output_copy, Map_out, Batch, out_image_size
-        );
-        cudaMemcpyAsync(pinned_output + offset * output_copy, *device_output_ptr + offset * output_copy, 
-            stream_size * output_copy * sizeof(float), cudaMemcpyDeviceToHost, streams[i]);
-    }      
-    for (int i=0; i<NUM_STREAMS; i++) cudaStreamDestroy(streams[i]);
-    cudaDeviceSynchronize();  
-    cudaFree(matmul_output);
-    cudaFree(unrolled_matrix);
-    cudaMemcpy(modifiable_host_output, pinned_output, output_size, cudaMemcpyHostToHost);
 }
 
 
-__host__ void GPUInterface::conv_forward_gpu(float *device_output, const float *device_input, const float *device_mask, const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
+__host__ void GPUInterface::conv_forward_gpu(float * __restrict__ device_output, const float * __restrict__ 
+    device_input, const float * __restrict__ device_mask, const int Batch, 
+    const int Map_out, const int Channel, const int Height, const int Width, const int K)
 {
+    const int Height_out = Height - K + 1;
+    const int Width_out = Width - K + 1;
+
+    int W_grid = ceil(1.0 * Height_out * Width_out / TILE_WIDTH);
+    int H_grid = ceil(1.0 * Map_out / TILE_WIDTH);
+
+    dim3 Dimblock(TILE_WIDTH, TILE_WIDTH, 1);
+    // dim3 Dimblock(16, 2, 1);
+    dim3 Dimgrid(W_grid, H_grid, Batch);
+
+    matrix_mul_built_in_unrolling_kernel<<<Dimgrid, Dimblock>>>(device_output, device_input, device_mask, Batch, Map_out, Channel, Height, Width, K);
 }
 
 
-__host__ void GPUInterface::conv_forward_gpu_epilog(float *host_output, float *device_output, float *device_input, float *device_mask, const int Batch, const int Map_out, const int Channel, const int Height, const int Width, const int K)
+__host__ void GPUInterface::conv_forward_gpu_epilog(float * __restrict__ host_output, float * __restrict__ device_output, 
+    float * __restrict__ device_input, float * __restrict__ device_mask, const int Batch, const int Map_out, 
+    const int Channel, const int Height, const int Width, const int K)
 {
+    // TODO: Copy the output back to host
+    int Height_out = Height - K + 1;
+    int Width_out = Width - K + 1;
+    int output_size = (Batch * Map_out * Height_out * Width_out) * sizeof(float);
+    cudaMemcpy(host_output, device_output, output_size, cudaMemcpyDeviceToHost);
+
     // TODO: Free device memory
     cudaFree(device_output);
     cudaFree(device_input);
     cudaFree(device_mask);
+
 }
 
 

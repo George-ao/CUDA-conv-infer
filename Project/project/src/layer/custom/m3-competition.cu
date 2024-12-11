@@ -50,32 +50,42 @@ __global__ void matrix_mul_built_in_unrolling_kernel(float * __restrict__ device
     int numCRows = numARows;
     int numCColumns = numBColumns;
 
+    // reuse.1: reuse & remove size_t for 5000
+    int K_square = K * K;
+    int w = col % Width_out;
+    int h = col / Width_out;
     #pragma unroll
-    for (int tileId = 0; tileId < (numAColumns - 1) / TILE_WIDTH + 1; tileId++) {
-        if (row < numARows && tileId * TILE_WIDTH + tx < numAColumns) {
-            tileA[ty][tx] = A[(size_t) row * numAColumns + tileId * TILE_WIDTH + tx];
-        } else {
-            tileA[ty][tx] = 0;
-        }
-        if (col < numBColumns && tileId * TILE_WIDTH + ty < numBRows) {
-            size_t cur_row = tileId * TILE_WIDTH + ty;
-            int w = col % Width_out;
-            int h = col / Width_out;
-            int c = cur_row / (K * K);
-            int offset = cur_row % (K * K);
+    for (int tileId = 0; tileId < (numAColumns - 1) / TILE_WIDTH + 1; tileId++) 
+    {
+        // if (row < numARows && tileId * TILE_WIDTH + tx < numAColumns) tileA[ty][tx] = A[(size_t) row * numAColumns + tileId * TILE_WIDTH + tx];
+        if (row < numARows && tileId * TILE_WIDTH + tx < numAColumns) tileA[ty][tx] = A[ row * numAColumns + tileId * TILE_WIDTH + tx];
+        else tileA[ty][tx] = 0;
+
+        if (col < numBColumns && tileId * TILE_WIDTH + ty < numBRows) 
+        {
+            // size_t cur_row = tileId * TILE_WIDTH + ty;
+            int cur_row = tileId * TILE_WIDTH + ty;
+            // int w = col % Width_out;
+            // int h = col / Width_out;
+            // int c = cur_row / (K * K);
+            // int offset = cur_row % (K * K);
+            int c = cur_row / K_square;
+            int offset = cur_row % K_square;
             int p = offset / K;
             int q = offset % K;
             tileB[ty][tx] = in_4d(cur_batch, c, h + p, w + q);
-        } else {
-            tileB[ty][tx] = 0;
-        }
+        } 
+        else tileB[ty][tx] = 0;
+
         __syncthreads();
+        
         if (ty < 2)
         {
             wmma::load_matrix_sync(a_frag, &tileA[0][0], TILE_WIDTH);
             wmma::load_matrix_sync(b_frag, &tileB[0][0], TILE_WIDTH);
             wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
         }
+
         __syncthreads();
     }
 

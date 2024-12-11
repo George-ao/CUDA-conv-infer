@@ -17,6 +17,8 @@ __global__ void matrix_mul_built_in_unrolling_kernel(float * __restrict__ device
     const int Batch, const int Map_out, const int Channel, 
     const int Height, const int Width, const int K)
 {
+    // __shared__ float tileA[TILE_WIDTH][TILE_WIDTH];
+    // __shared__ float tileB[TILE_WIDTH][TILE_WIDTH];
     __shared__ half tileA[TILE_WIDTH][TILE_WIDTH];
     __shared__ half tileB[TILE_WIDTH][TILE_WIDTH];
     __shared__ float tileC[TILE_WIDTH][TILE_WIDTH];

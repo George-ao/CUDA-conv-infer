@@ -21,14 +21,15 @@ echo -e "job $SLURM_JOBID is starting on `hostname`\n\n"
 # check mem leak
 # srun compute-sanitizer ./m3 100
 srun ./m3 10000 > m3.out
-# { time srun ./m3 100 > m3_op5_100.out; } 2> time_op5_100.out
-# { time srun ./m3 1000 > m3_op5_1000.out; } 2> time_op5_1000.out
-# { time srun ./m3 > m3_op5_10000.out; } 2> time_op5_10000.out
+# { time srun ./m3 100 > m3_op4_100.out; } 2> time_op4_100.out
+# { time srun ./m3 1000 > m3_op4_1000.out; } 2> time_op4_1000.out
+# { time srun ./m3 > m3_op4_10000.out; } 2> time_op4_10000.out
 
+# srun ./m3 5000 > m3_op4_5000.out
 # Generate nsys profile information, output will be in profile.out
-# srun nsys profile --stats=true ./m3 > profile_op5.out
+# srun nsys profile --stats=true ./m3 > profile_op4.out
 
 # Generate analysis_file.ncu-rep with a detailed profiling result
-# ncu --set full -f -o analysis_file_op5 ./m3 
+# ncu --set full -f -o analysis_file_op4 ./m3 
 
 # --constraint="projects,perf,nvperf"

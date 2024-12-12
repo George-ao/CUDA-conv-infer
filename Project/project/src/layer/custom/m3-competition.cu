@@ -72,11 +72,12 @@ __global__ void layer1_matrix_mul_built_in_unrolling_kernel(float * __restrict__
     {
         if (tx < 16)
         {
-            if (row < numARows && tileId * L1_WMMA_K + tx < numAColumns) tileA[ty][tx] = device_mask[ row * numAColumns + tileId * L1_WMMA_K + tx];
+            if (row < numARows && tileId * L1_WMMA_K + tx < numAColumns) tileA[ty][tx] = device_mask[row * numAColumns + tileId * L1_WMMA_K + tx];
             else tileA[ty][tx] = 0;
         }
 
         // two steps to load = L1_WMMA_K / TILE_HEIGHT
+        #pragma unroll
         for (int i=0; i< 2; i++)
         {
             if (col < numBColumns && (tileId * L1_WMMA_K) + ty + i * L1_TILE_HEIGHT < numBRows) 

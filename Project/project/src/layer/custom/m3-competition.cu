@@ -16,9 +16,17 @@ using namespace nvcuda;
 #define L1_WMMA_N 32
 #define L1_WMMA_K 16
 
-#define L1_TILE_WIDTH 32
-#define L1_TILE_HEIGHT 8
 
+// sweeping blk dim
+    // 1  13.4
+    // 2  9.87 
+    // 4  9.43 
+    // 8  11.1
+    // 16 13.1
+#define L1_TILE_WIDTH  32
+#define L1_TILE_HEIGHT 4
+
+// 4*32 version
 __global__ void layer1_matrix_mul_built_in_unrolling_kernel(float * __restrict__ device_output, const float * __restrict__ 
     device_input, const float * __restrict__ device_mask, 
     const int Batch, const int Map_out, const int Channel, 
@@ -38,8 +46,8 @@ __global__ void layer1_matrix_mul_built_in_unrolling_kernel(float * __restrict__
     int tx = threadIdx.x;
     int cur_batch = blockIdx.z; 
 
-    int row = by * L1_TILE_HEIGHT + ty;
-    int col = bx * L1_TILE_WIDTH + tx;
+    int row = by * L1_WMMA_M + ty;
+    int col = bx * L1_WMMA_N + tx;
 
     int Height_out = Height - K + 1;
     int Width_out = Width - K + 1;
@@ -54,31 +62,33 @@ __global__ void layer1_matrix_mul_built_in_unrolling_kernel(float * __restrict__
     // #define out_3d(i3, i2, i1) device_output[(i3) * (Map_out * Height_out * Width_out) + (i2) * (Height_out * Width_out) + i1]
     #define out_3d(i3, i2, i1) device_output[(i3) * (m_hout_wout) + (i2) * (hout_wout) + i1]
 
-    // perform multiplication
-    int numARows = Map_out;
-    int numAColumns = Channel * K * K;
-    int numBRows = numAColumns;
-    int numBColumns =  hout_wout; // Height_out * Width_out;
-    int numCRows = numARows;
-    int numCColumns = numBColumns;
-
     // reuse.1: reuse & remove size_t for 5000
     int K_square = K * K;
     int h = col / Width_out;
     int w = col - h * Width_out;
+
+    int numARows = Map_out;
+    int numAColumns = Channel * K_square;  // int numAColumns = Channel * K * K;
+    int numBRows = numAColumns;
+    int numBColumns =  hout_wout; // Height_out * Width_out;
+    int numCRows = numARows;
+    int numCColumns = numBColumns;
 
     #pragma unroll
     for (int tileId = 0; tileId < (numAColumns - 1) / L1_WMMA_K + 1; tileId++)
     {
         if (tx < 16)
         {
-            if (row < numARows && tileId * L1_WMMA_K + tx < numAColumns) tileA[ty][tx] = device_mask[row * numAColumns + tileId * L1_WMMA_K + tx];
-            else tileA[ty][tx] = 0;
+            for (int i=0; i< L1_WMMA_M / L1_TILE_HEIGHT; i++)
+            {
+                if (row + i * L1_TILE_HEIGHT < numARows && tileId * L1_WMMA_K + tx < numAColumns) 
+                    tileA[ty + i * L1_TILE_HEIGHT][tx] = device_mask[(row + i * L1_TILE_HEIGHT) * numAColumns + tileId * L1_WMMA_K + tx];
+                else tileA[ty + i * L1_TILE_HEIGHT][tx] = 0;
+            }
         }
-
         // two steps to load = L1_WMMA_K / TILE_HEIGHT
         #pragma unroll
-        for (int i=0; i< 2; i++)
+        for (int i=0; i< L1_WMMA_K / L1_TILE_HEIGHT; i++)
         {
             if (col < numBColumns && (tileId * L1_WMMA_K) + ty + i * L1_TILE_HEIGHT < numBRows) 
             {
@@ -105,11 +115,14 @@ __global__ void layer1_matrix_mul_built_in_unrolling_kernel(float * __restrict__
 
     if (ty < 1) wmma::store_matrix_sync(&tileC[0][0], c_frag, L1_WMMA_N, wmma::mem_row_major);
     __syncthreads();
-    if (row < numCRows && col < numCColumns) out_3d(cur_batch, row, col) = tileC[ty][tx];
+    for (int i=0; i< L1_WMMA_M / L1_TILE_HEIGHT; i++)
+    {
+        if (row + i * L1_TILE_HEIGHT < numCRows && col < numCColumns) 
+            out_3d(cur_batch, row + i * L1_TILE_HEIGHT, col) = tileC[ty + i * L1_TILE_HEIGHT][tx];
+    }
     // #undef in_4d
     #undef out_3d
 }
-
 
 __global__ void matrix_mul_built_in_unrolling_kernel(float * __restrict__ device_output, const float * __restrict__ 
     device_input, const float * __restrict__ device_mask, 

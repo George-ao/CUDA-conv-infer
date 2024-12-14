@@ -4,6 +4,9 @@
 #include <mma.h>
 using namespace nvcuda;
 
+// 4*49
+__constant__ int const_cpq[196*3];
+
 #define TILE_WIDTH 16
 #define BLOCK_SIZE 256
 #define WARP_SIZE 32
@@ -17,12 +20,11 @@ using namespace nvcuda;
 #define L1_WMMA_K 16
 
 
-// sweeping blk dim
-    // 1  13.4
-    // 2  9.87 
-    // 4  9.43 
-    // 8  11.1
-    // 16 13.1
+// sweeping layer1 blk dim
+    // 1  5.8
+    // 2  4.5
+    // 4  4.4
+    // 8  6.2
 #define L1_TILE_WIDTH  32
 #define L1_TILE_HEIGHT 4
 
@@ -93,11 +95,9 @@ __global__ void layer1_matrix_mul_built_in_unrolling_kernel(float * __restrict__
             if (col < numBColumns && (tileId * L1_WMMA_K) + ty + i * L1_TILE_HEIGHT < numBRows) 
             {
                 int cur_row = (tileId * L1_WMMA_K) + ty + i * L1_TILE_HEIGHT;
-                int c = cur_row / K_square;
-                int offset = cur_row % K_square;
-                int p = offset / K;
-                int q = offset - p * K;
-                // tileB[ty][tx] = in_4d(cur_batch, c, h + p, w + q);
+                int c = const_cpq[cur_row*3];
+                int p = const_cpq[cur_row*3+1];
+                int q = const_cpq[cur_row*3+2];
                 tileB[ty + i * L1_TILE_HEIGHT][tx] = device_input[cb_chw + c * h_w + (h + p) * Width + w + q];
             } 
             else tileB[ty + i * L1_TILE_HEIGHT][tx] = 0;
@@ -160,7 +160,6 @@ __global__ void matrix_mul_built_in_unrolling_kernel(float * __restrict__ device
     #define out_3d(i3, i2, i1) device_output[(i3) * (m_hout_wout) + (i2) * (hout_wout) + i1]
 
     // perform multiplication
-    // const float *A = device_mask;
     
     int numARows = Map_out;
     int numAColumns = Channel * K * K;
@@ -170,7 +169,6 @@ __global__ void matrix_mul_built_in_unrolling_kernel(float * __restrict__ device
     int numCColumns = numBColumns;
 
     // reuse.1: reuse & remove size_t for 5000
-    int K_square = K * K;
     int h = col / Width_out;
     int w = col - h * Width_out;
 
@@ -182,14 +180,10 @@ __global__ void matrix_mul_built_in_unrolling_kernel(float * __restrict__ device
 
         if (col < numBColumns && tileId * TILE_WIDTH + ty < numBRows) 
         {
-
             int cur_row = tileId * TILE_WIDTH + ty;
-            int c = cur_row / K_square;
-            int offset = cur_row % K_square;
-            int p = offset / K;
-            int q = offset - p * K;
-
-            // tileB[ty][tx] = in_4d(cur_batch, c, h + p, w + q);
+            int c = const_cpq[cur_row*3];
+            int p = const_cpq[cur_row*3+1];
+            int q = const_cpq[cur_row*3+2];
             tileB[ty][tx] = device_input[cb_chw + c * h_w + (h + p) * Width + w + q];
         } 
         else tileB[ty][tx] = 0;
@@ -232,6 +226,22 @@ __host__ void GPUInterface::conv_forward_gpu_prolog(const float * __restrict__ h
 
     cudaMemcpy(*device_input_ptr, host_input, input_size, cudaMemcpyHostToDevice);
     cudaMemcpy(*device_mask_ptr, host_mask, mask_size, cudaMemcpyHostToDevice);
+
+    // hardcore indices: c, p, q
+    int host_cpq[196*3];
+    int cpq_size = K * K * Channel * 3 * sizeof(int);
+    for (int i=0; i < K * K * Channel; i++)
+    {
+        int cur_row = i;
+        int c = cur_row / (K * K);
+        int offset = cur_row % (K * K);
+        int p = offset / K;
+        int q = offset % K;
+        host_cpq[i*3]=c;
+        host_cpq[i*3+1]=p;
+        host_cpq[i*3+2]=q;
+    }
+    cudaMemcpyToSymbol(const_cpq, host_cpq, cpq_size, 0, cudaMemcpyHostToDevice);
 }
 
 
@@ -259,7 +269,6 @@ __host__ void GPUInterface::conv_forward_gpu(float * __restrict__ device_output,
         W_grid = ceil(1.0 * Height_out * Width_out / TILE_WIDTH);
         H_grid = ceil(1.0 * Map_out / TILE_WIDTH);
         dim3 Dimblock(TILE_WIDTH, TILE_WIDTH, 1);
-        // dim3 Dimblock(16, 2, 1);
         dim3 Dimgrid(W_grid, H_grid, Batch);
         matrix_mul_built_in_unrolling_kernel<<<Dimgrid, Dimblock>>>(device_output, device_input, device_mask, Batch, Map_out, Channel, Height, Width, K);
     }
